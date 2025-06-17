@@ -1,0 +1,13 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "forensic-duplicator",
+  "outputfilename": "forensic-duplicator",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Igor Adulyan",
+    "email": "53629576+igoradulian@users.noreply.github.com"
+  }
+}
