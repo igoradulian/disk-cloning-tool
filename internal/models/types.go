@@ -4,6 +4,17 @@ import (
 	"time"
 )
 
+// Package models defines the data structures used in the forensic duplicator application.
+type DriveInfo struct {
+	Caption     string `json:"caption"`
+	Description string `json:"description"`
+	DeviceID    string `json:"deviceId"`
+	DriveType   string `json:"driveType"`
+	FreeSpace   string `json:"freeSpace"`
+	Size        string `json:"size"`
+	VolumeName  string `json:"volumeName"`
+}
+
 // DiskInfo represents information about a physical disk
 type DiskInfo struct {
 	Path         string `json:"path"`         // Physical path (e.g., \\.\PhysicalDrive0)

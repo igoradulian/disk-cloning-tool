@@ -1,12 +1,33 @@
 package forensic
 
 import (
+	"bytes"
 	"fmt"
 	"forensic-duplicator/internal/models"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 )
+
+func GetDisksPhysicalPaths() ([]string, error) {
+	cmd := exec.Command("powershell", "-Command", "Get-WmiObject Win32_DiskDrive | Select-Object -ExpandProperty DeviceID")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute PowerShell: %w", err)
+	}
+	lines := strings.Split(out.String(), "\n")
+	var paths []string
+	for _, line := range lines {
+		path := strings.TrimSpace(line)
+		if path != "" {
+			paths = append(paths, path)
+		}
+	}
+	return paths, nil
+}
 
 // EnumerateDisks returns a list of all available physical disks
 func EnumerateDisks() ([]models.DiskInfo, error) {
@@ -84,22 +105,6 @@ func ValidateTargetDisk(diskPath string) error {
 	return validateTargetDiskPlatform(diskPath, info)
 }
 
-// isPhysicalDrive checks if the given path represents a physical drive
-func isPhysicalDrive(path string) bool {
-	switch runtime.GOOS {
-	case "windows":
-		return strings.HasPrefix(strings.ToLower(path), `\\.\physicaldrive`)
-	case "linux":
-		return strings.HasPrefix(path, "/dev/sd") ||
-			strings.HasPrefix(path, "/dev/hd") ||
-			strings.HasPrefix(path, "/dev/nvme")
-	case "darwin":
-		return strings.HasPrefix(path, "/dev/disk")
-	default:
-		return false
-	}
-}
-
 // getDiskSize returns the size of a disk in bytes
 func getDiskSize(diskPath string) (int64, error) {
 	file, err := os.OpenFile(diskPath, os.O_RDONLY, 0)
@@ -119,33 +124,6 @@ func getDiskSize(diskPath string) (int64, error) {
 
 // Platform-specific implementations would be in separate files:
 // disk_windows.go, disk_linux.go, disk_darwin.go
-
-// Placeholder implementations - these would be in platform-specific files
-func EnumerateWindowsDisks() ([]models.DiskInfo, error) {
-	var disks []models.DiskInfo
-
-	// Enumerate physical drives \\.\PhysicalDrive0, \\.\PhysicalDrive1, etc.
-	for i := 0; i < 32; i++ {
-		path := fmt.Sprintf(`\\.\PhysicalDrive%d`, i)
-
-		// Try to open the drive
-		file, err := os.OpenFile(path, os.O_RDONLY, 0)
-		if err != nil {
-			continue // Drive doesn't exist or can't be accessed
-		}
-		file.Close()
-
-		// Get disk information
-		info, err := getWindowsDiskInfo(path)
-		if err != nil {
-			continue
-		}
-
-		disks = append(disks, *info)
-	}
-
-	return disks, nil
-}
 
 func EnumerateLinuxDisks() ([]models.DiskInfo, error) {
 	// Implementation would parse /proc/partitions, /sys/block/, etc.
@@ -182,14 +160,4 @@ func getLinuxDiskInfo(diskPath string) (*models.DiskInfo, error) {
 
 func getDarwinDiskInfo(diskPath string) (*models.DiskInfo, error) {
 	return nil, fmt.Errorf("macOS disk info not implemented")
-}
-
-func validateSourceDiskPlatform(diskPath string, info *models.DiskInfo) error {
-	// Platform-specific source validation
-	return nil
-}
-
-func validateTargetDiskPlatform(diskPath string, info *models.DiskInfo) error {
-	// Platform-specific target validation
-	return nil
 }

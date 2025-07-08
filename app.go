@@ -31,7 +31,7 @@ func (a *App) OnStartup(ctx context.Context) {
 
 // GetAvailableDisks returns list of available physical disks
 func (a *App) GetAvailableDisks() ([]models.DiskInfo, error) {
-	disks, err := forensic.EnumerateDisks()
+	disks, err := forensic.EnumerateWindowsDisks()
 	if err != nil {
 		runtime.EventsEmit(a.ctx, "error", fmt.Sprintf("Failed to enumerate disks: %v", err))
 		return nil, err
