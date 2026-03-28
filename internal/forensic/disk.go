@@ -1,12 +1,77 @@
 package forensic
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"forensic-duplicator/internal/models"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 )
+
+func runPowerShell(command string) ([]byte, error) {
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", command)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		errText := strings.TrimSpace(stderr.String())
+		if errText != "" {
+			return nil, fmt.Errorf("powershell failed: %w: %s", err, errText)
+		}
+		return nil, fmt.Errorf("powershell failed: %w", err)
+	}
+	return bytes.TrimSpace(stdout.Bytes()), nil
+}
+
+func parsePowerShellJSON[T any](data []byte) ([]T, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("empty output")
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var items []T
+	if err := decoder.Decode(&items); err == nil {
+		return items, nil
+	}
+
+	decoder = json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var single T
+	if err := decoder.Decode(&single); err != nil {
+		return nil, err
+	}
+	return []T{single}, nil
+}
+
+func GetDisksPhysicalPaths() ([]string, error) {
+	data, err := runPowerShell("Get-CimInstance Win32_DiskDrive | Select-Object DeviceID | ConvertTo-Json -Compress")
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute PowerShell: %w", err)
+	}
+
+	type diskDriveRow struct {
+		DeviceID string `json:"DeviceID"`
+	}
+
+	rows, err := parsePowerShellJSON[diskDriveRow](data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse disk list: %w", err)
+	}
+
+	var paths []string
+	for _, row := range rows {
+		path := strings.TrimSpace(row.DeviceID)
+		if path != "" {
+			paths = append(paths, path)
+		}
+	}
+	return paths, nil
+}
 
 // EnumerateDisks returns a list of all available physical disks
 func EnumerateDisks() ([]models.DiskInfo, error) {
@@ -84,22 +149,6 @@ func ValidateTargetDisk(diskPath string) error {
 	return validateTargetDiskPlatform(diskPath, info)
 }
 
-// isPhysicalDrive checks if the given path represents a physical drive
-func isPhysicalDrive(path string) bool {
-	switch runtime.GOOS {
-	case "windows":
-		return strings.HasPrefix(strings.ToLower(path), `\\.\physicaldrive`)
-	case "linux":
-		return strings.HasPrefix(path, "/dev/sd") ||
-			strings.HasPrefix(path, "/dev/hd") ||
-			strings.HasPrefix(path, "/dev/nvme")
-	case "darwin":
-		return strings.HasPrefix(path, "/dev/disk")
-	default:
-		return false
-	}
-}
-
 // getDiskSize returns the size of a disk in bytes
 func getDiskSize(diskPath string) (int64, error) {
 	file, err := os.OpenFile(diskPath, os.O_RDONLY, 0)
@@ -119,33 +168,6 @@ func getDiskSize(diskPath string) (int64, error) {
 
 // Platform-specific implementations would be in separate files:
 // disk_windows.go, disk_linux.go, disk_darwin.go
-
-// Placeholder implementations - these would be in platform-specific files
-func EnumerateWindowsDisks() ([]models.DiskInfo, error) {
-	var disks []models.DiskInfo
-
-	// Enumerate physical drives \\.\PhysicalDrive0, \\.\PhysicalDrive1, etc.
-	for i := 0; i < 32; i++ {
-		path := fmt.Sprintf(`\\.\PhysicalDrive%d`, i)
-
-		// Try to open the drive
-		file, err := os.OpenFile(path, os.O_RDONLY, 0)
-		if err != nil {
-			continue // Drive doesn't exist or can't be accessed
-		}
-		file.Close()
-
-		// Get disk information
-		info, err := getWindowsDiskInfo(path)
-		if err != nil {
-			continue
-		}
-
-		disks = append(disks, *info)
-	}
-
-	return disks, nil
-}
 
 func EnumerateLinuxDisks() ([]models.DiskInfo, error) {
 	// Implementation would parse /proc/partitions, /sys/block/, etc.
@@ -182,14 +204,4 @@ func getLinuxDiskInfo(diskPath string) (*models.DiskInfo, error) {
 
 func getDarwinDiskInfo(diskPath string) (*models.DiskInfo, error) {
 	return nil, fmt.Errorf("macOS disk info not implemented")
-}
-
-func validateSourceDiskPlatform(diskPath string, info *models.DiskInfo) error {
-	// Platform-specific source validation
-	return nil
-}
-
-func validateTargetDiskPlatform(diskPath string, info *models.DiskInfo) error {
-	// Platform-specific target validation
-	return nil
 }

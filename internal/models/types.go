@@ -1,8 +1,43 @@
 package models
 
 import (
+	"sync"
 	"time"
 )
+
+type CopyStats struct {
+	DriveName   string
+	TotalFiles  int64
+	CopiedFiles int64
+	TotalBytes  int64
+	CopiedBytes int64
+	StartTime   time.Time
+	EndTime     time.Time
+	Errors      []string
+	Completed   bool
+	Mutex       sync.RWMutex
+}
+
+type OverallStats struct {
+	SourceDrive string
+	DestDrives  []string
+	DriveStats  map[string]*CopyStats
+	TotalFiles  int64
+	TotalBytes  int64
+	StartTime   time.Time
+	Mutex       sync.RWMutex
+}
+
+// Package models defines the data structures used in the forensic duplicator application.
+type DriveInfo struct {
+	Caption     string `json:"caption"`
+	Description string `json:"description"`
+	DeviceID    string `json:"deviceId"`
+	DriveType   string `json:"driveType"`
+	FreeSpace   string `json:"freeSpace"`
+	Size        string `json:"size"`
+	VolumeName  string `json:"volumeName"`
+}
 
 // DiskInfo represents information about a physical disk
 type DiskInfo struct {
