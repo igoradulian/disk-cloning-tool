@@ -1,116 +1,83 @@
 package forensic
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"forensic-duplicator/internal/models"
-	"golang.org/x/sys/windows"
-	"log"
-	"os/exec"
 	"strconv"
 	"strings"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
-
-var (
-	kernel32              = windows.NewLazySystemDLL("kernel32.dll")
-	procGetDriveTypeW     = kernel32.NewProc("GetDriveTypeW")
-	procDeviceIoControl   = kernel32.NewProc("DeviceIoControl")
-	ioctlDiskGetDriveGeom = uint32(0x70000) // IOCTL_DISK_GET_DRIVE_GEOMETRY
-)
-
-/*func EnumerateWindowsDisks() ([]models.DiskInfo, error) {
-	var disks []models.DiskInfo
-
-	// Enumerate Physical Drives
-	for i := 0; i < 32; i++ {
-		path := fmt.Sprintf(`\\.\\PhysicalDrive%d`, i)
-		file, err := os.OpenFile(path, os.O_RDONLY, 0)
-		if err != nil {
-			continue
-		}
-		file.Close()
-
-		info, err := getWindowsDiskInfo(path)
-		if err != nil {
-			continue
-		}
-
-		// Attempt to exclude system drive by checking for C:\ in mounted volumes
-		vols := getMountedVolumes(fmt.Sprintf("PhysicalDrive%d", i))
-		isSystem := false
-		for _, v := range vols {
-			if strings.ToUpper(v) == "C:\\" {
-				isSystem = true
-				break
-			}
-		}
-		if isSystem {
-			continue // Skip system disk
-		}
-
-		disks = append(disks, *info)
-	}
-
-	// Enumerate logical partitions (e.g., C:, D:)
-	for letter := 'A'; letter <= 'Z'; letter++ {
-		drive := fmt.Sprintf("%c:\\", letter)
-		driveType, _, _ := procGetDriveTypeW.Call(uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(drive))))
-		if driveType == 3 { // DRIVE_FIXED
-			info := models.DiskInfo{
-				Path:         drive,
-				Name:         fmt.Sprintf("Partition (%s)", drive),
-				Size:         0,
-				SectorSize:   512,
-				FileSystem:   "NTFS/FAT",
-				IsReadOnly:   false,
-				IsRemovable:  false,
-				SerialNumber: "Unknown",
-				Model:        "Logical Partition",
-			}
-			disks = append(disks, info)
-		}
-	}
-
-	return disks, nil
-}*/
 
 func EnumerateWindowsDisks() ([]models.DiskInfo, error) {
 
-	//disks, err := GetDisksPhysicalPaths()
-	disks, err := GetMountedDrives()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get physical disk paths: %v", err)
+	var diskInfos []models.DiskInfo
+	pathSet := map[string]struct{}{}
+
+	physicalPaths, err := GetDisksPhysicalPaths()
+	if err == nil {
+		for _, diskPath := range physicalPaths {
+			infoOfPhysicalDisk, infoErr := GetWindowsDiskInfo(diskPath)
+			if infoErr != nil {
+				continue
+			}
+			if _, exists := pathSet[infoOfPhysicalDisk.Path]; exists {
+				continue
+			}
+			pathSet[infoOfPhysicalDisk.Path] = struct{}{}
+			diskInfos = append(diskInfos, *infoOfPhysicalDisk)
+		}
 	}
 
-	var diskInfos []models.DiskInfo
+	mountedDrives, mountErr := GetMountedDrives()
+	if mountErr != nil && len(diskInfos) == 0 {
+		return nil, fmt.Errorf("failed to enumerate disks: %v", mountErr)
+	}
+
 	sectorSize := 512 // Default sector size, can be adjusted based on actual disk info
+	for _, diskPath := range mountedDrives {
+		if strings.TrimSpace(diskPath.Size) == "" {
+			continue
+		}
 
-	for _, diskPath := range disks[1:] {
-		//info, err := GetWindowsDiskInfo(diskPath)
+		size, sizeErr := strconv.ParseInt(diskPath.Size, 10, 64)
+		if sizeErr != nil {
+			return nil, fmt.Errorf("failed to convert disk size for %s: %v", diskPath.Caption, sizeErr)
+		}
 
-		size, err := strconv.ParseInt(diskPath.Size, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert disk size for %s: %v", size, err)
+		driveType := 0
+		if strings.TrimSpace(diskPath.DriveType) != "" {
+			driveType, _ = strconv.Atoi(diskPath.DriveType)
+		}
+		if driveType == 5 { // CD-ROM
+			continue
+		}
+
+		rootDiskPath, _, pathErr := normalizeWindowsDrivePath(diskPath.Caption)
+		if pathErr != nil {
+			continue
+		}
+		if _, exists := pathSet[rootDiskPath]; exists {
+			continue
+		}
+
+		name := rootDiskPath
+		if strings.TrimSpace(diskPath.VolumeName) != "" {
+			name = fmt.Sprintf("%s (%s)", strings.TrimSpace(diskPath.VolumeName), rootDiskPath)
 		}
 
 		info := &models.DiskInfo{
-			Path:         fmt.Sprintf("Physical Drive (%s)", diskPath.Caption),
-			Name:         diskPath.Description,
+			Path:         rootDiskPath,
+			Name:         name,
 			Size:         size,
 			SectorSize:   sectorSize,
 			SerialNumber: "Unknown",
-			Model:        "Unknown",
-			IsRemovable:  false,
+			Model:        "Logical Volume",
+			IsRemovable:  driveType == 2,
 			IsReadOnly:   false,
-			FileSystem:   "Raw",
-		}
-
-		if err != nil {
-			return nil, fmt.Errorf("failed to get disk info for %s: %v", diskPath, err)
+			FileSystem:   "NTFS/FAT",
 		}
 
 		// Check if disk is read-only
@@ -118,8 +85,10 @@ func EnumerateWindowsDisks() ([]models.DiskInfo, error) {
 			continue // Skip read-only disks
 		}
 
+		pathSet[rootDiskPath] = struct{}{}
 		diskInfos = append(diskInfos, *info)
 	}
+
 	return diskInfos, nil
 }
 
@@ -130,8 +99,31 @@ func getMountedVolumes(physicalDrive string) []string {
 }
 
 func GetWindowsDiskInfo(diskPath string) (*models.DiskInfo, error) {
-	isDriveLetter := len(diskPath) == 3 && diskPath[1] == ':' && diskPath[2] == '\\'
-	pathUTF16, err := windows.UTF16PtrFromString(diskPath)
+	trimmedPath := strings.TrimSpace(diskPath)
+	if trimmedPath == "" {
+		return nil, fmt.Errorf("disk path is empty")
+	}
+
+	isDriveLetter := len(trimmedPath) >= 2 && trimmedPath[1] == ':'
+	openPath := trimmedPath
+	infoPath := trimmedPath
+	name := trimmedPath
+	fileSystem := "Raw"
+	model := "Unknown"
+
+	if isDriveLetter {
+		rootPath, letter, err := normalizeWindowsDrivePath(trimmedPath)
+		if err != nil {
+			return nil, err
+		}
+		openPath = fmt.Sprintf("\\\\.\\%s:", letter)
+		infoPath = rootPath
+		name = rootPath
+		fileSystem = "NTFS/FAT"
+		model = "Logical Volume"
+	}
+
+	pathUTF16, err := windows.UTF16PtrFromString(openPath)
 	if err != nil {
 		return nil, fmt.Errorf("invalid disk path: %v", err)
 	}
@@ -146,7 +138,7 @@ func GetWindowsDiskInfo(diskPath string) (*models.DiskInfo, error) {
 		0,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("cannot open %s: %v", diskPath, err)
+		return nil, fmt.Errorf("cannot open %s: %v", openPath, err)
 	}
 	defer windows.CloseHandle(handle)
 
@@ -170,33 +162,23 @@ func GetWindowsDiskInfo(diskPath string) (*models.DiskInfo, error) {
 		nil,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get disk size for %s: %v", diskPath, err)
+		return nil, fmt.Errorf("failed to get disk size for %s: %v", openPath, err)
 	}
 	// Default sector size
 	sectorSize := 512
 
+	size, err := strconv.ParseInt(strconv.FormatInt(lengthInfo.Length, 10), 10, 64)
+
 	info := &models.DiskInfo{
-		Path:         fmt.Sprintf("Physical Drive (%s)", diskPath),
-		Name:         "",
-		Size:         lengthInfo.Length,
+		Path:         infoPath,
+		Name:         name,
+		Size:         size,
 		SectorSize:   sectorSize,
 		SerialNumber: "Unknown",
-		Model:        "Unknown",
+		Model:        model,
 		IsRemovable:  false,
 		IsReadOnly:   false,
-		FileSystem:   "Raw",
-	}
-
-	// Enumerate logical partitions (e.g., C:, D:	)
-
-	if isDriveLetter {
-		info.Path = diskPath
-		info.Name = fmt.Sprintf("Partition (%s)", diskPath)
-		info.FileSystem = "NTFS/FAT"
-		info.Model = "Logical Partition"
-	} else {
-		info.Path = diskPath
-		info.Name = fmt.Sprintf("Physical Drive (%s)", diskPath)
+		FileSystem:   fileSystem,
 	}
 
 	return info, nil
@@ -204,92 +186,82 @@ func GetWindowsDiskInfo(diskPath string) (*models.DiskInfo, error) {
 
 func GetMountedDrives() ([]models.DriveInfo, error) {
 
-	cmd := exec.Command("wmic", "logicaldisk", "get", "caption,", "description,", "size,", "freespace")
-	stdout, err := cmd.StdoutPipe()
-
+	data, err := runPowerShell("Get-CimInstance Win32_LogicalDisk | Select-Object Caption, Description, DeviceID, DriveType, FreeSpace, Size, VolumeName | ConvertTo-Json -Compress")
 	if err != nil {
-		log.Fatalf("Error creating stdout pipe: %v", err)
+		return nil, err
 	}
 
-	if err := cmd.Start(); err != nil {
-		log.Fatalf("Error starting command: %v", err)
+	type logicalDiskRow struct {
+		Caption     string      `json:"Caption"`
+		Description string      `json:"Description"`
+		DeviceID    string      `json:"DeviceID"`
+		DriveType   json.Number `json:"DriveType"`
+		Size        json.Number `json:"Size"`
+		FreeSpace   json.Number `json:"FreeSpace"`
+		VolumeName  string      `json:"VolumeName"`
 	}
 
-	scanner := bufio.NewScanner(stdout)
-	// Step 2: Convert table output to CSV format
-	var lines []string
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		// Basic parsing: split by whitespace. Adjust based on your command's output format.
-		lines = append(lines, line)
-	}
-
-	// Remove empty lines
-	var cleanLines []string
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed != "" {
-			cleanLines = append(cleanLines, trimmed)
-		}
-	}
-	if len(cleanLines) < 2 {
-		return nil, fmt.Errorf("unexpected output format")
-	}
-
-	header := strings.Fields(cleanLines[0])
-	cleanLines = cleanLines[1:] // Header
-	// Remaining lines are data
-	var records [][]string
-	records = append(records, header)
-
-	for _, line := range lines {
-		fields := strings.Fields(line)
-
-		// Fix misaligned columns if Name has spaces
-		if len(fields) > len(header) {
-			diff := len(fields) - len(header) + 1
-			name := strings.Join(fields[:diff], " ")
-			rest := fields[diff:]
-			fields = append([]string{name}, rest...)
-		}
-
-		if len(fields) == len(header) {
-			records = append(records, fields)
-		}
-	}
-
-	// Step 3: Convert to CSV format in memory
-	var buf bytes.Buffer
-	writer := csv.NewWriter(&buf)
-	for _, rec := range records {
-		_ = writer.Write(rec)
-	}
-	writer.Flush()
-
-	// Step 4: Read CSV into structs
-	reader := csv.NewReader(&buf)
-	rawCSVdata, err := reader.ReadAll()
+	rows, err := parsePowerShellJSON[logicalDiskRow](data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read CSV: %w", err)
+		return nil, fmt.Errorf("failed to parse logical disks: %w", err)
 	}
 
-	headers := rawCSVdata[0]
 	var diskInfos []models.DriveInfo
-	for _, row := range rawCSVdata[1:] {
-		item := map[string]string{}
-		for i, val := range row {
-			item[headers[i]] = val
+	for _, row := range rows {
+		caption := strings.TrimSpace(row.Caption)
+		if caption == "" {
+			continue
 		}
+		size := strings.TrimSpace(row.Size.String())
+		freeSpace := strings.TrimSpace(row.FreeSpace.String())
 
-		// Marshal to JSON then unmarshal into struct
-		jsonData, _ := json.Marshal(item)
-		var pi models.DriveInfo
-		_ = json.Unmarshal(jsonData, &pi)
-		diskInfos = append(diskInfos, pi)
+		diskInfos = append(diskInfos, models.DriveInfo{
+			Caption:     caption,
+			Description: strings.TrimSpace(row.Description),
+			DeviceID:    strings.TrimSpace(row.DeviceID),
+			DriveType:   strings.TrimSpace(row.DriveType.String()),
+			Size:        size,
+			FreeSpace:   freeSpace,
+			VolumeName:  strings.TrimSpace(row.VolumeName),
+		})
+	}
+	return diskInfos, nil
+}
+
+func ExtractWindowsDriveLetter(path string) (string, error) {
+	trimmedPath := strings.TrimSpace(path)
+	if trimmedPath == "" {
+		return "", fmt.Errorf("drive path is empty")
+	}
+	if len(trimmedPath) >= 2 && trimmedPath[1] == ':' {
+		letter := strings.ToUpper(trimmedPath[:1])
+		if letter[0] < 'A' || letter[0] > 'Z' {
+			return "", fmt.Errorf("invalid drive letter in %s", path)
+		}
+		return letter, nil
+	}
+	return "", fmt.Errorf("path %s is not a drive-letter volume", path)
+}
+
+func FormatWindowsVolume(drivePath string) error {
+	letter, err := ExtractWindowsDriveLetter(drivePath)
+	if err != nil {
+		return err
 	}
 
-	return diskInfos, nil
+	cmd := fmt.Sprintf("Format-Volume -DriveLetter %s -FileSystem NTFS -Force -Confirm:$false", letter)
+	if _, err := runPowerShell(cmd); err != nil {
+		return fmt.Errorf("failed to format %s: %w", letter, err)
+	}
+	return nil
+}
+
+func normalizeWindowsDrivePath(path string) (string, string, error) {
+	letter, err := ExtractWindowsDriveLetter(path)
+	if err != nil {
+		return "", "", err
+	}
+	return fmt.Sprintf("%s:\\", letter), letter, nil
 }
 
 func validateSourceDiskPlatform(diskPath string, info *models.DiskInfo) error {

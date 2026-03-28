@@ -2,6 +2,7 @@ package forensic
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"forensic-duplicator/internal/models"
 	"os"
@@ -10,18 +11,61 @@ import (
 	"strings"
 )
 
+func runPowerShell(command string) ([]byte, error) {
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", command)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		errText := strings.TrimSpace(stderr.String())
+		if errText != "" {
+			return nil, fmt.Errorf("powershell failed: %w: %s", err, errText)
+		}
+		return nil, fmt.Errorf("powershell failed: %w", err)
+	}
+	return bytes.TrimSpace(stdout.Bytes()), nil
+}
+
+func parsePowerShellJSON[T any](data []byte) ([]T, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("empty output")
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var items []T
+	if err := decoder.Decode(&items); err == nil {
+		return items, nil
+	}
+
+	decoder = json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var single T
+	if err := decoder.Decode(&single); err != nil {
+		return nil, err
+	}
+	return []T{single}, nil
+}
+
 func GetDisksPhysicalPaths() ([]string, error) {
-	cmd := exec.Command("powershell", "-Command", "Get-WmiObject Win32_DiskDrive | Select-Object -ExpandProperty DeviceID")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err := cmd.Run()
+	data, err := runPowerShell("Get-CimInstance Win32_DiskDrive | Select-Object DeviceID | ConvertTo-Json -Compress")
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute PowerShell: %w", err)
 	}
-	lines := strings.Split(out.String(), "\n")
+
+	type diskDriveRow struct {
+		DeviceID string `json:"DeviceID"`
+	}
+
+	rows, err := parsePowerShellJSON[diskDriveRow](data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse disk list: %w", err)
+	}
+
 	var paths []string
-	for _, line := range lines {
-		path := strings.TrimSpace(line)
+	for _, row := range rows {
+		path := strings.TrimSpace(row.DeviceID)
 		if path != "" {
 			paths = append(paths, path)
 		}

@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { GetAvailableDisks, StartForensicCopy, StopCopy } from '../wailsjs/go/main/App';
+  import { GetAvailableDisks, StartForensicCopy, StartRawCopy, StopCopy, FormatTargetDisks } from '../wailsjs/go/main/App';
   import { EventsOn } from '../wailsjs/runtime/runtime';
 
   let disks = [];
@@ -9,11 +9,22 @@
   let progress = {};
   let logs = [];
   let copying = false;
+  let formatTargets = false;
+  let copyMode = 'file';
+
+  $: selectableDisks = disks.filter(d => d?.path && d.path.endsWith('\\'));
+  $: physicalDisks = disks.filter(d => d?.path && d.path.toLowerCase().startsWith('\\\\.\\physicaldrive'));
+  $: displayDisks = copyMode === 'raw' ? physicalDisks : selectableDisks;
 
   onMount(() => {
     EventsOn("log", (msg) => logs = [...logs, `[${new Date().toLocaleTimeString()}] ${msg}`]);
-    EventsOn("copy-progress", (p) => progress = p);
-    EventsOn("copy-complete", () => copying = false);
+    EventsOn("copy-progress", (p) => progress = { ...progress, ...p });
+    EventsOn("copy-complete", (payload) => {
+      copying = false;
+      if (payload) {
+        progress = { ...progress, ...payload, status: 'Completed' };
+      }
+    });
     EventsOn("error", (err) => {
       copying = false;
       logs = [...logs, `[ERROR] ${err}`];
@@ -45,12 +56,40 @@
     }
   }
 
+  function setCopyMode(mode) {
+    if (copyMode === mode) return;
+    copyMode = mode;
+    source = null;
+    targets = [];
+    formatTargets = false;
+  }
+
   async function startCopy() {
     if (!source || targets.length === 0) {
       logs = [...logs, `[Warning] Select a source and at least one target.`];
       return;
     }
+
+    if (copyMode === 'file' && formatTargets) {
+      const targetNames = targets.map(t => t.name || t.path).join(', ');
+      const confirmed = window.confirm(`Format the target drives before copying?\n\nTargets: ${targetNames}\n\nThis will permanently erase data.`);
+      if (!confirmed) {
+        return;
+      }
+      try {
+        await FormatTargetDisks(targets.map(t => t.path), source.path);
+      } catch (e) {
+        logs = [...logs, `[Error] Format failed: ${e.message}`];
+        return;
+      }
+    }
+
     copying = true;
+    if (copyMode === 'raw') {
+      await StartRawCopy(source.path, targets.map(t => t.path));
+      return;
+    }
+
     await StartForensicCopy(source.path, targets.map(t => t.path));
   }
 
@@ -70,9 +109,28 @@
 <main class="container">
   <div class="sidebar">
     <div class="section">
+      <h2>Copy Mode</h2>
+      <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+        <label style="display: flex; align-items: center; gap: 6px;">
+          <input type="radio" name="copyMode" checked={copyMode === 'file'} on:change={() => setCopyMode('file')} />
+          <span>Logical volumes</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 6px;">
+          <input type="radio" name="copyMode" checked={copyMode === 'raw'} on:change={() => setCopyMode('raw')} />
+          <span>Physical disks (raw)</span>
+        </label>
+      </div>
+      {#if copyMode === 'raw'}
+        <div style="font-size: 12px; opacity: 0.7; margin-bottom: 8px;">
+          Raw imaging requires admin rights and uses physical disks like \\.\PhysicalDrive0.
+        </div>
+      {/if}
+    </div>
+
+    <div class="section">
       <h2>Source Drive</h2>
       <div class="disk-list">
-        {#each disks as d}
+        {#each displayDisks as d}
           <div class="disk-item {source?.path === d.path ? 'selected' : ''}" on:click={() => selectSource(d)}>
             <div class="disk-name">{d.name}</div>
             <div class="disk-details">{d.path}<br>{formatBytes(d.size)}</div>
@@ -85,7 +143,7 @@
     <div class="section">
       <h2>Target Drives</h2>
       <div class="disk-list">
-        {#each disks.filter(d => source && d.path !== source.path) as d}
+        {#each displayDisks.filter(d => source && d.path !== source.path) as d}
           <div class="disk-item {targets.find(t => t.path === d.path) ? 'selected' : ''}" on:click={() => toggleTarget(d)}>
             <div class="disk-name">{d.name}</div>
             <div class="disk-details">{d.path}<br>{formatBytes(d.size)}</div>
@@ -106,6 +164,10 @@
     </div>
 
     <div class="section">
+      <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; opacity: {copyMode === 'raw' ? 0.5 : 1};">
+        <input type="checkbox" bind:checked={formatTargets} disabled={copyMode === 'raw'} />
+        <span>Format targets before copying</span>
+      </label>
       <button class="button" on:click={startCopy} disabled={copying}>Start Imaging</button>
       <button class="button danger" on:click={stopCopy} disabled={!copying}>Stop</button>
     </div>
