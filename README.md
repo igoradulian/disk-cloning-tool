@@ -111,6 +111,5 @@ Use only on systems/devices you are explicitly authorized to examine.
 
 Igor Adulyan
 
-- GitHub: `https://github.com/<your-username>`
-- Portfolio: `https://<your-portfolio-url>`
-- LinkedIn: `https://linkedin.com/in/<your-profile>`
+- GitHub: `https://github.com/igoradulian`
+- LinkedIn: `https://www.linkedin.com/in/igor-adulyan/`
