@@ -24,13 +24,14 @@ This project is designed as a portfolio-grade implementation of a forensic-style
 
 ## Interface Screenshots
 
-Add screenshots to `docs/screenshots/` using these filenames:
-
 ![Main Dashboard](/01-main-dashboard.png)
-main UI with source/target selection and copy mode._
+main UI with source/target selection and copy mode.
 
-![Disk Selection](/02-disk-selection.png)
-selected source and multiple targets._
+![Main Dashboard](/02-main-dashboard.png)
+main UI with source/target selection and copy mode.
+
+![Disk Selection](/03-disk-selection.png)
+selected source and multiple targets.
 
 ## Tech Stack
 
