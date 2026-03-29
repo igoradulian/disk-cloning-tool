@@ -29,7 +29,7 @@ Add screenshots to `docs/screenshots/` using these filenames:
 ![Main Dashboard](/01-main-dashboard.png)
 main UI with source/target selection and copy mode._
 
-![Disk Selection(/02-disk-selection.png)
+![Disk Selection](/02-disk-selection.png)
 selected source and multiple targets._
 
 ## Tech Stack
