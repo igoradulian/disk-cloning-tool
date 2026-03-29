@@ -32,12 +32,6 @@ _Placeholder: main UI with source/target selection and copy mode._
 ![Disk Selection](docs/screenshots/02-disk-selection.png)
 _Placeholder: selected source and multiple targets._
 
-![Imaging Progress](docs/screenshots/03-imaging-progress.png)
-_Placeholder: active copy with progress, speed, and ETA._
-
-![Hash Results](docs/screenshots/04-hash-results.png)
-_Placeholder: completed operation with MD5 and SHA-256 output._
-
 ## Tech Stack
 
 - Backend: Go
