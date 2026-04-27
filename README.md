@@ -1,5 +1,13 @@
 # Forensic Duplicator
 
+<p>
+  <img src="https://img.shields.io/badge/Language-Go-00ADD8?logo=go&logoColor=white" alt="Go" />
+  <img src="https://img.shields.io/badge/Desktop-Wails%20v2-2D8CFF?logo=windows&logoColor=white" alt="Wails v2" />
+  <img src="https://img.shields.io/badge/Frontend-Svelte-FF3E00?logo=svelte&logoColor=white" alt="Svelte" />
+  <img src="https://img.shields.io/badge/Bundler-Vite-646CFF?logo=vite&logoColor=white" alt="Vite" />
+  <img src="https://img.shields.io/badge/Domain-Disk%20Cloning-4C1" alt="Disk Cloning" />
+</p>
+
 Desktop disk imaging and cloning tool built with Go, Wails, and Svelte.
 
 This project is designed as a portfolio-grade implementation of a forensic-style duplication workflow with real-time progress, multi-target copy, and hash reporting.
@@ -24,12 +32,15 @@ This project is designed as a portfolio-grade implementation of a forensic-style
 
 ## Interface Screenshots
 
-Add screenshots to `docs/screenshots/` using these filenames:
+Add screenshots to `../docs/screenshots/` using these filenames:
 
-![Main Dashboard](docs/screenshots/01-main-dashboard.png)
+![Main Dashboard](../docs/screenshots/01-main-dashboard.png)
 _Placeholder: main UI with source/target selection and copy mode._
 
-![Disk Selection](docs/screenshots/02-disk-selection.png)
+![Main Dashboard Detail](../docs/screenshots/02-main-dashboard.png)
+_Placeholder: an alternate view of the dashboard, emphasizing progress and telemetry._
+
+![Disk Selection](../docs/screenshots/03-disk-selection.png)
 _Placeholder: selected source and multiple targets._
 
 ## Tech Stack
