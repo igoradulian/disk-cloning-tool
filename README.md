@@ -8,9 +8,17 @@
   <img src="https://img.shields.io/badge/Domain-Disk%20Cloning-4C1" alt="Disk Cloning" />
 </p>
 
-Desktop disk imaging and cloning tool built with Go, Wails, and Svelte.
+<div style="text-align: center;">
 
-This project is designed as a portfolio-grade implementation of a forensic-style duplication workflow with real-time progress, multi-target copy, and hash reporting.
+**Portfolio-ready forensic disk cloning with live telemetry and hash reporting**
+
+Controlled logical and raw duplication workflows built with Go, Wails, and Svelte.
+
+For a quick tour, see the `Features`, `Interface Screenshots`, and `Getting Started` sections below.
+
+*Use only on systems and devices you are explicitly authorized to examine.*
+
+</div>
 
 ## Features
 
@@ -33,10 +41,10 @@ This project is designed as a portfolio-grade implementation of a forensic-style
 ## Interface Screenshots
 
 ![Main Dashboard](01-main-dashboard.png)
-_Placeholder: main UI with source/target selection and copy mode._
+_Placeholder: main UI veiw._
 
 ![Disk Selection](02-main-dashboard.png)
-_Placeholder: main UI veiw._
+_Placeholder: main UI with source/target selection and copy mode._
 
 ![Disk Selection](03-disk-selection.png)
 _Placeholder: selected source and multiple targets._
