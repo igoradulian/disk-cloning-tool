@@ -32,15 +32,12 @@ This project is designed as a portfolio-grade implementation of a forensic-style
 
 ## Interface Screenshots
 
-Add screenshots to `../docs/screenshots/` using these filenames:
+Add screenshots to `docs/screenshots/` using these filenames:
 
-![Main Dashboard](../docs/screenshots/01-main-dashboard.png)
+![Main Dashboard](docs/screenshots/01-main-dashboard.png)
 _Placeholder: main UI with source/target selection and copy mode._
 
-![Main Dashboard Detail](../docs/screenshots/02-main-dashboard.png)
-_Placeholder: an alternate view of the dashboard, emphasizing progress and telemetry._
-
-![Disk Selection](../docs/screenshots/03-disk-selection.png)
+![Disk Selection](docs/screenshots/02-disk-selection.png)
 _Placeholder: selected source and multiple targets._
 
 ## Tech Stack
@@ -122,6 +119,5 @@ Use only on systems/devices you are explicitly authorized to examine.
 
 Igor Adulyan
 
-- GitHub: `https://github.com/<your-username>`
-- Portfolio: `https://<your-portfolio-url>`
-- LinkedIn: `https://linkedin.com/in/<your-profile>`
+- GitHub: `https://github.com/igoradulian`
+- LinkedIn: `https://www.linkedin.com/in/igor-adulyan/`
